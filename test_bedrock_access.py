@@ -15,17 +15,19 @@ def test_bedrock():
         bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
         
         # Test model invocation
-        model_id = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+        model_id = "amazon.nova-2-lite-v1:0"
         
         body = json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 100,
             "messages": [
                 {
                     "role": "user",
-                    "content": "Say hello in one word"
+                    "content": [{"text": "Say hello in one word"}],
                 }
-            ]
+            ],
+            "inferenceConfig": {
+                "maxTokens": 100,
+                "temperature": 0,
+            },
         })
         
         print(f"[INFO] Testing model: {model_id}")
@@ -37,10 +39,10 @@ def test_bedrock():
         )
         
         response_body = json.loads(response['body'].read())
-        content = response_body.get('content', [])
+        message_parts = response_body.get('output', {}).get('message', {}).get('content', [])
         
-        if content:
-            message = content[0].get('text', '')
+        if message_parts:
+            message = ''.join(part.get('text', '') for part in message_parts)
             print(f"✅ [SUCCESS] Bedrock is working!")
             print(f"   Model response: {message}")
         else:

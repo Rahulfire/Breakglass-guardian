@@ -53,7 +53,10 @@ class IAMService:
             "rds_parameter_update": "BreakGlassRestrictedRDS"
         }
         
-        role_name = role_mapping.get(template_name, "BreakGlassRestrictedDefault")
+        role_name = role_mapping.get(template_name)
+        if role_name is None:
+            raise ValueError(f"No restricted IAM role is configured for template {template_name}")
+        role_name = f"{role_name}-{settings.environment}"
         return self.get_role_arn(role_name)
     
     def validate_permission_template(self, template_name: str) -> Tuple[bool, str]:

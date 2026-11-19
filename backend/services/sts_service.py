@@ -58,7 +58,8 @@ class STSService:
                 RoleArn=role_arn,
                 RoleSessionName=session_name,
                 DurationSeconds=duration_seconds,
-                Policy=session_policy
+                Policy=session_policy,
+                ExternalId=settings.sts_external_id
             )
             
             credentials = response['Credentials']

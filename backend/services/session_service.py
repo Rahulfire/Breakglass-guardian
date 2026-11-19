@@ -49,9 +49,17 @@ class SessionService:
         expires_at = datetime.utcnow() + timedelta(minutes=request.duration_minutes)
         
         # Get appropriate IAM role
-        role_arn = iam_service.get_restricted_role_for_template(
-            approval.recommended_permissions[0] if approval.recommended_permissions else "default"
-        )
+        template_by_resource = {
+            "ec2": "ec2_restart",
+            "s3": "s3_read",
+            "lambda": "lambda_config_update",
+            "dynamodb": "dynamodb_read",
+            "rds": "rds_parameter_update",
+        }
+        template_name = template_by_resource.get(request.resource_type.value)
+        if template_name is None:
+            raise RuntimeError(f"No restricted role template for {request.resource_type}")
+        role_arn = iam_service.get_restricted_role_for_template(template_name)
         
         # Build resource ARN
         resource_arn = iam_service.build_resource_arn(

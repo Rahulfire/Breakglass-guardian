@@ -76,8 +76,10 @@ class IdentityValidator:
             return False, "Self-approval is prohibited"
         
         # Check for alias attempts (simple check)
-        requester_base = requester.split("+")[0] if "+" in requester else requester
-        approver_base = approver.split("+")[0] if "+" in approver else approver
+        requester_local, requester_domain = requester.split("@", 1)
+        approver_local, approver_domain = approver.split("@", 1)
+        requester_base = requester_local.split("+", 1)[0] + "@" + requester_domain
+        approver_base = approver_local.split("+", 1)[0] + "@" + approver_domain
         
         if requester_base == approver_base:
             return False, "Self-approval via email alias is prohibited"

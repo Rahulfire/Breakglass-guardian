@@ -147,6 +147,13 @@ class PolicyValidator:
             return False, f"AWS account {account_id} is not in allowed accounts"
         
         return True, f"AWS account {account_id} is authorized"
+
+    @staticmethod
+    def validate_region(region: str) -> Tuple[bool, str]:
+        """Limit requests to the configured AWS region."""
+        if region != settings.aws_region:
+            return False, f"AWS region {region} is not allowed"
+        return True, f"AWS region {region} is authorized"
     
     @staticmethod
     def get_permission_template(template_name: str) -> Optional[dict]:
@@ -234,5 +241,9 @@ class PolicyValidator:
         )
         if not account_valid:
             errors.append(account_msg)
+
+        region_valid, region_msg = PolicyValidator.validate_region(request.resource_region)
+        if not region_valid:
+            errors.append(region_msg)
         
         return len(errors) == 0, errors, warnings

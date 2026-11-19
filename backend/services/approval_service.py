@@ -11,6 +11,8 @@ from backend.models.approval import (
 from backend.models.access_request import AccessRequest, AgentAnalysis
 from backend.security.approval_validator import ApprovalValidator
 from backend.config import settings
+from backend.services.audit_service import audit_service
+from backend.storage import DynamoRepository
 
 
 class ApprovalService:
@@ -23,6 +25,7 @@ class ApprovalService:
         """Initialize approval service"""
         # In production: Initialize DynamoDB client
         self._approvals: dict[str, ApprovalRequest] = {}  # In-memory for demo
+        self._repository = DynamoRepository(settings.dynamodb_approvals_table, "approval_id")
     
     def create_approval_request(
         self,
@@ -71,13 +74,24 @@ class ApprovalService:
         
         # Store approval
         self._approvals[approval_id] = approval
+        self._repository.put(approval, approval_id)
+        audit_service.log_approval_created(
+            approval_id=approval_id,
+            request_id=request.request_id,
+            risk_level=analysis.risk_classification,
+        )
         
         return approval
     
     def get_approval(self, approval_id: str) -> Optional[ApprovalRequest]:
         """Get approval by ID"""
         # In production: Query DynamoDB
-        return self._approvals.get(approval_id)
+        approval = self._approvals.get(approval_id)
+        if approval is None:
+            approval = self._repository.get(approval_id, ApprovalRequest)
+            if approval is not None:
+                self._approvals[approval_id] = approval
+        return approval
     
     def get_pending_approvals(self) -> List[ApprovalRequest]:
         """Get all pending approval requests"""
@@ -136,6 +150,15 @@ class ApprovalService:
         
         # In production: Update DynamoDB
         self._approvals[approval_id] = approval
+        self._repository.put(approval, approval_id)
+        audit_service.log_approval_decision(
+            approval_id=approval_id,
+            request_id=approval.request_id,
+            approver_email=decision.approver_email,
+            approver_name=decision.approver_name,
+            decision=decision.decision,
+            reason=decision.reason,
+        )
         
         return approval
     
@@ -159,6 +182,11 @@ class ApprovalService:
         
         # In production: Update DynamoDB
         self._approvals[approval_id] = approval
+        self._repository.update_fields(
+            approval_id,
+            {"used": True, "used_at": approval.used_at.isoformat()},
+            "used = :unused",
+        )
         
         return True
     

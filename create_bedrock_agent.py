@@ -91,7 +91,7 @@ Always prioritize security while enabling legitimate emergency access."""
                 agentName=agent_name,
                 agentResourceRoleArn=agent_role_arn,
                 description='AI security analyst for BreakGlass emergency access requests',
-                foundationModel='anthropic.claude-sonnet-4-5-20250929-v1:0',
+                foundationModel='amazon.nova-2-lite-v1:0',
                 instruction=agent_instruction,
                 idleSessionTTLInSeconds=600
             )
@@ -313,7 +313,7 @@ Always prioritize security while enabling legitimate emergency access."""
     
     print(f"Agent ID: {agent_id}")
     print(f"Alias ID: {alias_id}")
-    print(f"Model: anthropic.claude-sonnet-4-5-20250929-v1:0")
+    print("Model: amazon.nova-2-lite-v1:0")
     print()
     
     print("Update your .env file with:")

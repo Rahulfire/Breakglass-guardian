@@ -24,19 +24,25 @@ class Settings(BaseSettings):
     # Local Mode Configuration
     use_local_mode: bool = Field(default=True)
     bedrock_enabled: bool = Field(default=False)
+    auth_enabled: bool = Field(default=False)
+    auth_secret_key: str = Field(default="change-me-in-production")
+    auth_algorithm: str = Field(default="HS256")
+    auth_token_expiration_minutes: int = Field(default=15)
+    environment: str = Field(default="dev")
+    sts_external_id: str = Field(default="breakglass-guardian")
     
     # Bedrock Configuration
     bedrock_agent_id: str = Field(default="DEMO_AGENT")
     bedrock_agent_alias_id: str = Field(default="DEMO_ALIAS")
-    bedrock_model_id: str = Field(default="anthropic.claude-3-sonnet-20240229-v1:0")
+    bedrock_model_id: str = Field(default="amazon.nova-2-lite-v1:0")
     bedrock_guardrail_id: str = Field(default="DEMO_GUARDRAIL")
     bedrock_guardrail_version: str = Field(default="1")
     
     # DynamoDB Tables
-    dynamodb_requests_table: str = Field(default="breakglass-requests")
-    dynamodb_approvals_table: str = Field(default="breakglass-approvals")
-    dynamodb_sessions_table: str = Field(default="breakglass-sessions")
-    dynamodb_audit_table: str = Field(default="breakglass-audit")
+    dynamodb_requests_table: str = Field(default="breakglass-requests-dev")
+    dynamodb_approvals_table: str = Field(default="breakglass-approvals-dev")
+    dynamodb_sessions_table: str = Field(default="breakglass-sessions-dev")
+    dynamodb_audit_table: str = Field(default="breakglass-audit-dev")
     
     # Security Configuration
     max_session_duration_minutes: int = Field(default=120)

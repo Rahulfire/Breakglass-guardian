@@ -36,7 +36,7 @@ async def query_audit_events(
     )
     
     events = audit_service.query_events(query)
-    total = len(audit_service._events)  # In production: count from DynamoDB
+    total = len(audit_service._events)
     
     return AuditLogResponse(
         events=events,

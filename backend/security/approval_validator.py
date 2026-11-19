@@ -107,7 +107,7 @@ class ApprovalValidator:
         if approval.used:
             if approval.used_at:
                 used_minutes = int((datetime.utcnow() - approval.used_at).total_seconds() / 60)
-                return False, f"Approval already used {used_minutes} minutes ago"
+                return False, f"Approval has already been used {used_minutes} minutes ago"
             return False, "Approval has already been used"
         
         return True, "Approval has not been used"

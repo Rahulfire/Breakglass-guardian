@@ -13,7 +13,7 @@ Parameters:
   
   ModelId:
     Type: String
-    Default: anthropic.claude-sonnet-4-5-20250929-v1:0
+    Default: amazon.nova-2-lite-v1:0
     Description: Bedrock model ID to use
 
 Resources:

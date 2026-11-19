@@ -129,6 +129,28 @@ aws cloudformation deploy `
 Successfully created/updated stack - breakglass-iam
 ```
 
+The initial deployment bootstraps the stack with the operator principal. After
+the `BreakGlassBackendApp-dev` role exists, update the restricted-role trust
+policies to trust the backend role instead of the operator:
+
+```powershell
+$BACKEND_ROLE_ARN = (aws cloudformation describe-stacks `
+  --stack-name breakglass-iam `
+  --query "Stacks[0].Outputs[?OutputKey=='BackendRoleArn'].OutputValue" `
+  --output text `
+  --region us-east-1)
+
+aws cloudformation deploy `
+  --template-file infrastructure/iam/roles.yaml `
+  --stack-name breakglass-iam `
+  --parameter-overrides Environment=dev BackendRoleArn=$BACKEND_ROLE_ARN `
+  --capabilities CAPABILITY_NAMED_IAM `
+  --region us-east-1
+```
+
+Do not leave the operator user as the long-term trusted principal for restricted
+roles. The backend runtime must use `BreakGlassBackendApp-dev`.
+
 #### 2.4 Verify Roles Created
 ```powershell
 # List IAM roles
@@ -212,7 +234,7 @@ DYNAMODB_SESSIONS_TABLE=breakglass-sessions-dev
 DYNAMODB_AUDIT_TABLE=breakglass-audit-dev
 
 # Bedrock Configuration (we'll use direct model invocation)
-BEDROCK_MODEL_ID=anthropic.claude-3-sonnet-20240229-v1:0
+BEDROCK_MODEL_ID=amazon.nova-2-lite-v1:0
 ```
 
 ---
@@ -246,7 +268,7 @@ aws bedrock list-foundation-models --region us-east-1
 
 # Test model invocation
 aws bedrock-runtime invoke-model `
-  --model-id anthropic.claude-3-sonnet-20240229-v1:0 `
+  --model-id amazon.nova-2-lite-v1:0 `
   --body '{"prompt":"Human: Hello\nAssistant:","max_tokens_to_sample":100}' `
   --region us-east-1 `
   output.json
@@ -340,7 +362,8 @@ aws cloudformation delete-stack --stack-name breakglass-dynamodb
 **Solution:** Go to Bedrock console and enable model access manually.
 
 ### Issue: "Cannot assume role"
-**Solution:** Check the BackendRoleArn parameter matches your user ARN.
+**Solution:** During bootstrap, use the operator ARN once. For the steady-state
+deployment, set `BackendRoleArn` to the `BreakGlassBackendApp-dev` role ARN.
 
 ---
 

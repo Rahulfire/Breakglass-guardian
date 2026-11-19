@@ -7,6 +7,8 @@ from typing import List, Optional, Dict, Any
 from backend.models.audit_event import (
     AuditEvent, EventType, EventSeverity, SecurityAlert, AuditQuery
 )
+from backend.config import settings
+from backend.storage import DynamoRepository
 
 
 class AuditService:
@@ -19,6 +21,11 @@ class AuditService:
         # In production: Initialize DynamoDB client
         self._events: List[AuditEvent] = []  # In-memory for demo
         self._alerts: List[SecurityAlert] = []
+        self._repository = DynamoRepository(
+            settings.dynamodb_audit_table,
+            "event_id",
+            sort_key="timestamp",
+        )
     
     def log_event(
         self,
@@ -72,6 +79,7 @@ class AuditService:
         
         # In production: Write to DynamoDB
         self._events.append(event)
+        self._repository.put(event, event.event_id)
         
         # In production: Write to CloudWatch Logs
         print(f"[AUDIT] {event.severity.upper()}: {event.event_description}")

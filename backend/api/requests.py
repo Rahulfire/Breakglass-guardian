@@ -1,7 +1,7 @@
 """
 API endpoints for emergency access requests
 """
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from typing import List, Optional
 import uuid
 from datetime import datetime
@@ -14,16 +14,37 @@ from backend.security.risk_engine import RiskEngine
 from backend.security.policy_validator import PolicyValidator
 from backend.security.identity_validator import IdentityValidator
 from backend.services.audit_service import audit_service
+from backend.services.approval_service import approval_service
+from backend.services.resource_service import ResourceService
+from backend.config import settings
+from backend.security.auth import require_principal, Principal
+from backend.storage import DynamoRepository
+from backend.agent.bedrock_agent import BedrockAgent
+from backend.models.audit_event import EventType, EventSeverity
 from backend.models.audit_event import EventType, EventSeverity
 
 router = APIRouter()
 
 # In-memory storage for demo (in production: use DynamoDB)
 _requests_store: dict[str, AccessRequestFull] = {}
+_requests_repository = DynamoRepository(settings.dynamodb_requests_table, "request_id")
+
+
+def get_request_record(request_id: str) -> Optional[AccessRequestFull]:
+    """Return a stored request for internal workflow services."""
+    request = _requests_store.get(request_id)
+    if request is None:
+        request = _requests_repository.get(request_id, AccessRequestFull)
+        if request is not None:
+            _requests_store[request_id] = request
+    return request
 
 
 @router.post("/", response_model=AccessRequestFull, status_code=status.HTTP_201_CREATED)
-async def submit_request(request: AccessRequest):
+async def submit_request(
+    request: AccessRequest,
+    principal: Principal = Depends(require_principal),
+):
     """
     Submit a new emergency access request.
     
@@ -35,6 +56,11 @@ async def submit_request(request: AccessRequest):
     5. Routed for approval if needed
     """
     # Generate request ID
+    if (settings.auth_enabled or not settings.use_local_mode) and request.requester_email.lower() != principal.email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Requester identity does not match authenticated user",
+        )
     request.request_id = f"req_{uuid.uuid4().hex[:12]}"
     request.created_at = datetime.utcnow()
     request.updated_at = datetime.utcnow()
@@ -70,20 +96,6 @@ async def submit_request(request: AccessRequest):
     # Perform risk assessment
     risk_score, risk_level, risk_factors = RiskEngine.calculate_risk_score(request)
     
-    # Check for prompt injection
-    if any("prompt injection" in factor.lower() or "suspicious pattern" in factor.lower() 
-           for factor in risk_factors):
-        audit_service.log_prompt_injection_attempt(
-            request_id=request.request_id,
-            actor_email=request.requester_email,
-            indicators=risk_factors
-        )
-        request.status = RequestStatus.REJECTED
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Request contains suspicious content and has been rejected"
-        )
-    
     # Check for privilege escalation
     if risk_level == "CRITICAL":
         audit_service.log_privilege_escalation_attempt(
@@ -96,9 +108,32 @@ async def submit_request(request: AccessRequest):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Request classified as CRITICAL risk and has been auto-rejected"
         )
+
+    # Check for prompt injection
+    if any("prompt injection" in factor.lower() or "suspicious pattern" in factor.lower()
+           for factor in risk_factors):
+        audit_service.log_prompt_injection_attempt(
+            request_id=request.request_id,
+            actor_email=request.requester_email,
+            indicators=risk_factors
+        )
+        request.status = RequestStatus.REJECTED
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Request contains suspicious content and has been rejected"
+        )
     
     # Perform backend validation
     policy_valid, policy_errors, policy_warnings = PolicyValidator.validate_complete_request(request)
+    if policy_valid and not settings.use_local_mode:
+        resource_valid, resource_message = ResourceService().validate_resource_exists(
+            request.resource_type.value,
+            request.resource_id,
+            request.resource_region,
+        )
+        if not resource_valid:
+            policy_valid = False
+            policy_errors.append(resource_message)
     
     # Recommend template
     recommended_template = PolicyValidator.recommend_template(request)
@@ -121,6 +156,21 @@ async def submit_request(request: AccessRequest):
         agent_decision="RECOMMEND_APPROVAL" if policy_valid and risk_level != "CRITICAL" else "RECOMMEND_REJECTION",
         agent_explanation="Request appears legitimate and narrowly scoped" if policy_valid else "Policy violations detected"
     )
+    if settings.bedrock_enabled and policy_valid:
+        try:
+            bedrock_analysis = BedrockAgent().analyze(request)
+            agent_analysis.agent_explanation = str(
+                bedrock_analysis.get("explanation", agent_analysis.agent_explanation)
+            )
+        except Exception as exc:
+            audit_service.log_event(
+                event_type=EventType.POLICY_VIOLATION,
+                severity=EventSeverity.WARNING,
+                event_description="Supplementary Bedrock analysis unavailable; deterministic backend analysis retained",
+                request_id=request.request_id,
+                outcome="PENDING",
+                outcome_reason=str(exc),
+            )
     
     # Log agent analysis
     audit_service.log_agent_analysis(
@@ -135,7 +185,7 @@ async def submit_request(request: AccessRequest):
     backend_validation = BackendValidation(
         request_id=request.request_id,
         validation_passed=policy_valid,
-        resource_allowed=True,  # Simplified for demo
+        resource_allowed=policy_valid,
         resource_validation_message="Resource validated",
         permissions_valid=policy_valid,
         permissions_validation_message="Permissions require approval" if policy_valid else "; ".join(policy_errors),
@@ -163,9 +213,14 @@ async def submit_request(request: AccessRequest):
         agent_analysis=agent_analysis,
         backend_validation=backend_validation
     )
+
+    if request.status == RequestStatus.PENDING_APPROVAL:
+        approval = approval_service.create_approval_request(request, agent_analysis)
+        request_full.approval_id = approval.approval_id
     
     # Store request
     _requests_store[request.request_id] = request_full
+    _requests_repository.put(request_full, request.request_id)
     
     return request_full
 
@@ -173,6 +228,10 @@ async def submit_request(request: AccessRequest):
 @router.get("/{request_id}", response_model=AccessRequestFull)
 async def get_request(request_id: str):
     """Get request details by ID"""
+    if request_id not in _requests_store:
+        stored_request = _requests_repository.get(request_id, AccessRequestFull)
+        if stored_request is not None:
+            _requests_store[request_id] = stored_request
     if request_id not in _requests_store:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
