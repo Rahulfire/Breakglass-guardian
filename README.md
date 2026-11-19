@@ -292,8 +292,6 @@ without additional work:
 
 ## Configuration
 
-See [.env.example](.env.example) for backend configuration.
-
 See [frontend/.env.example](frontend/.env.example) for the frontend API URL.
 
 ## Documentation
