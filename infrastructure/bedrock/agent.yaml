@@ -1,0 +1,286 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'BreakGlass Guardian - Bedrock Agent Infrastructure'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+  
+  ModelId:
+    Type: String
+    Default: anthropic.claude-sonnet-4-5-20250929-v1:0
+    Description: Bedrock model ID to use
+
+Resources:
+  # S3 Bucket for Agent artifacts
+  AgentArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'breakglass-agent-artifacts-${Environment}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+  # IAM Role for Bedrock Agent
+  BedrockAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassBedrockAgent-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:agent/*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSLambdaExecute
+      Policies:
+        - PolicyName: BedrockModelAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: !Sub 'arn:aws:bedrock:${AWS::Region}::foundation-model/*'
+        
+        - PolicyName: S3ArtifactAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${AgentArtifactsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt AgentArtifactsBucket.Arn
+
+  # Lambda Function for Agent Action Group
+  AgentActionFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub 'breakglass-agent-action-${Environment}'
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt AgentActionFunctionRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref Environment
+      Code:
+        ZipFile: |
+          import json
+          import logging
+          
+          logger = logging.getLogger()
+          logger.setLevel(logging.INFO)
+          
+          def lambda_handler(event, context):
+              """
+              Bedrock Agent Action Handler
+              Validates access requests and provides security analysis
+              """
+              logger.info(f"Agent action invoked: {json.dumps(event)}")
+              
+              # Parse agent input
+              agent = event.get('agent', {})
+              action_group = event.get('actionGroup', '')
+              api_path = event.get('apiPath', '')
+              parameters = event.get('parameters', [])
+              
+              logger.info(f"Action Group: {action_group}, API Path: {api_path}")
+              
+              # Build parameters dict
+              params = {p['name']: p['value'] for p in parameters}
+              
+              response_body = {}
+              
+              # Handle different actions
+              if api_path == '/analyze-request':
+                  response_body = analyze_security_request(params)
+              elif api_path == '/validate-permissions':
+                  response_body = validate_permissions(params)
+              elif api_path == '/assess-risk':
+                  response_body = assess_risk(params)
+              else:
+                  response_body = {
+                      'error': f'Unknown API path: {api_path}'
+                  }
+              
+              # Return response in Bedrock Agent format
+              return {
+                  'messageVersion': '1.0',
+                  'response': {
+                      'actionGroup': action_group,
+                      'apiPath': api_path,
+                      'httpMethod': event.get('httpMethod', 'POST'),
+                      'httpStatusCode': 200,
+                      'responseBody': {
+                          'application/json': {
+                              'body': json.dumps(response_body)
+                          }
+                      }
+                  }
+              }
+          
+          def analyze_security_request(params):
+              """Analyze security aspects of access request"""
+              justification = params.get('justification', '')
+              permissions = params.get('permissions', '')
+              resource_type = params.get('resource_type', '')
+              
+              # Security analysis logic
+              suspicious = False
+              risk_level = 'MEDIUM'
+              
+              # Check for suspicious patterns
+              suspicious_keywords = ['ignore', 'bypass', 'disable', 'override', 'admin', 'root']
+              for keyword in suspicious_keywords:
+                  if keyword in justification.lower():
+                      suspicious = True
+                      risk_level = 'HIGH'
+                      break
+              
+              return {
+                  'analysis': {
+                      'risk_level': risk_level,
+                      'suspicious_content': suspicious,
+                      'recommendation': 'APPROVE' if not suspicious else 'REJECT',
+                      'reasoning': 'Request appears legitimate' if not suspicious else 'Suspicious patterns detected'
+                  }
+              }
+          
+          def validate_permissions(params):
+              """Validate requested permissions"""
+              permissions = params.get('permissions', '').split(',')
+              resource_type = params.get('resource_type', '')
+              
+              # Permission validation logic
+              valid = True
+              errors = []
+              
+              # Check for wildcard permissions
+              for perm in permissions:
+                  if '*' in perm and ':' not in perm:
+                      valid = False
+                      errors.append(f'Overly broad permission: {perm}')
+              
+              return {
+                  'validation': {
+                      'valid': valid,
+                      'errors': errors,
+                      'recommended_permissions': permissions if valid else []
+                  }
+              }
+          
+          def assess_risk(params):
+              """Assess overall risk of request"""
+              duration = int(params.get('duration_minutes', 60))
+              resource_type = params.get('resource_type', '')
+              
+              # Risk assessment
+              risk_score = 30
+              
+              # Adjust based on duration
+              if duration > 60:
+                  risk_score += 20
+              
+              # Adjust based on resource type
+              high_risk_resources = ['iam', 'kms', 'secrets']
+              if resource_type in high_risk_resources:
+                  risk_score += 30
+              
+              if risk_score < 40:
+                  risk_level = 'LOW'
+              elif risk_score < 70:
+                  risk_level = 'MEDIUM'
+              else:
+                  risk_level = 'HIGH'
+              
+              return {
+                  'risk': {
+                      'score': risk_score,
+                      'level': risk_level,
+                      'factors': [
+                          f'Duration: {duration} minutes',
+                          f'Resource type: {resource_type}'
+                      ]
+                  }
+              }
+
+  # IAM Role for Agent Action Lambda
+  AgentActionFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassAgentActionLambda-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # Lambda Permission for Bedrock Agent
+  AgentActionFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AgentActionFunction
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+Outputs:
+  AgentRoleArn:
+    Description: Bedrock Agent IAM Role ARN
+    Value: !GetAtt BedrockAgentRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-AgentRoleArn'
+  
+  AgentArtifactsBucketName:
+    Description: S3 Bucket for Agent artifacts
+    Value: !Ref AgentArtifactsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ArtifactsBucket'
+  
+  AgentActionFunctionArn:
+    Description: Lambda Function ARN for Agent actions
+    Value: !GetAtt AgentActionFunction.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-ActionFunctionArn'
+  
+  AgentActionFunctionName:
+    Description: Lambda Function Name
+    Value: !Ref AgentActionFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-ActionFunctionName'

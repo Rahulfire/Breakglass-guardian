@@ -1,0 +1,330 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Roles for BreakGlass Guardian'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+  BackendRoleArn:
+    Type: String
+    Description: ARN of the role/user that will assume these roles (your backend application)
+
+Resources:
+  # Restricted EC2 Role
+  BreakGlassRestrictedEC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassRestrictedEC2-${Environment}'
+      Description: Restricted EC2 access for BreakGlass emergency sessions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BackendRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: breakglass-guardian
+      MaxSessionDuration: 7200  # 2 hours maximum
+      Policies:
+        - PolicyName: RestrictedEC2Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowEC2Restart
+                Effect: Allow
+                Action:
+                  - ec2:RebootInstances
+                  - ec2:DescribeInstances
+                  - ec2:DescribeInstanceStatus
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion:
+                      - !Ref AWS::Region
+              - Sid: AllowEC2StopStart
+                Effect: Allow
+                Action:
+                  - ec2:StopInstances
+                  - ec2:StartInstances
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion:
+                      - !Ref AWS::Region
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Restricted Lambda Role
+  BreakGlassRestrictedLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassRestrictedLambda-${Environment}'
+      Description: Restricted Lambda access for BreakGlass emergency sessions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BackendRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: breakglass-guardian
+      MaxSessionDuration: 7200
+      Policies:
+        - PolicyName: RestrictedLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowLambdaConfigUpdate
+                Effect: Allow
+                Action:
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:GetFunctionConfiguration
+                  - lambda:GetFunction
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion:
+                      - !Ref AWS::Region
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Restricted S3 Read Role
+  BreakGlassRestrictedS3ReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassRestrictedS3Read-${Environment}'
+      Description: Restricted S3 read access for BreakGlass emergency sessions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BackendRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: breakglass-guardian
+      MaxSessionDuration: 3600  # 1 hour for read operations
+      Policies:
+        - PolicyName: RestrictedS3ReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowS3Read
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:GetBucketLocation
+                Resource: '*'
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Restricted DynamoDB Read Role
+  BreakGlassRestrictedDynamoDBReadRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassRestrictedDynamoDBRead-${Environment}'
+      Description: Restricted DynamoDB read access for BreakGlass emergency sessions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BackendRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: breakglass-guardian
+      MaxSessionDuration: 3600
+      Policies:
+        - PolicyName: RestrictedDynamoDBReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowDynamoDBRead
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - dynamodb:DescribeTable
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion:
+                      - !Ref AWS::Region
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Restricted RDS Role
+  BreakGlassRestrictedRDSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassRestrictedRDS-${Environment}'
+      Description: Restricted RDS access for BreakGlass emergency sessions
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref BackendRoleArn
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: breakglass-guardian
+      MaxSessionDuration: 7200
+      Policies:
+        - PolicyName: RestrictedRDSAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowRDSModify
+                Effect: Allow
+                Action:
+                  - rds:ModifyDBInstance
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBParameters
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion:
+                      - !Ref AWS::Region
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Backend Application Role (for the FastAPI application)
+  BackendApplicationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'BreakGlassBackendApp-${Environment}'
+      Description: Role for BreakGlass Guardian backend application
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowDynamoDBOperations
+                Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource:
+                  - !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/breakglass-*-${Environment}'
+        - PolicyName: AssumeRestrictedRoles
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowAssumeBreakGlassRoles
+                Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource:
+                  - !GetAtt BreakGlassRestrictedEC2Role.Arn
+                  - !GetAtt BreakGlassRestrictedLambdaRole.Arn
+                  - !GetAtt BreakGlassRestrictedS3ReadRole.Arn
+                  - !GetAtt BreakGlassRestrictedDynamoDBReadRole.Arn
+                  - !GetAtt BreakGlassRestrictedRDSRole.Arn
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: AllowBedrockAgent
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeAgent
+                  - bedrock:InvokeModel
+                Resource: '*'
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Instance Profile for EC2
+  BackendInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub 'BreakGlassBackendApp-${Environment}'
+      Roles:
+        - !Ref BackendApplicationRole
+
+Outputs:
+  EC2RoleArn:
+    Description: ARN of the Restricted EC2 Role
+    Value: !GetAtt BreakGlassRestrictedEC2Role.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-EC2RoleArn'
+
+  LambdaRoleArn:
+    Description: ARN of the Restricted Lambda Role
+    Value: !GetAtt BreakGlassRestrictedLambdaRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRoleArn'
+
+  S3ReadRoleArn:
+    Description: ARN of the Restricted S3 Read Role
+    Value: !GetAtt BreakGlassRestrictedS3ReadRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-S3ReadRoleArn'
+
+  DynamoDBReadRoleArn:
+    Description: ARN of the Restricted DynamoDB Read Role
+    Value: !GetAtt BreakGlassRestrictedDynamoDBReadRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-DynamoDBReadRoleArn'
+
+  RDSRoleArn:
+    Description: ARN of the Restricted RDS Role
+    Value: !GetAtt BreakGlassRestrictedRDSRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RDSRoleArn'
+
+  BackendRoleArn:
+    Description: ARN of the Backend Application Role
+    Value: !GetAtt BackendApplicationRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-BackendRoleArn'
+
+  BackendInstanceProfile:
+    Description: Instance Profile for Backend Application
+    Value: !Ref BackendInstanceProfile
+    Export:
+      Name: !Sub '${AWS::StackName}-BackendInstanceProfile'

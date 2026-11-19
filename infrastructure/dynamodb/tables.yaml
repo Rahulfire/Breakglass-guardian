@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'DynamoDB Tables for BreakGlass Guardian'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+Resources:
+  # Requests Table
+  RequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'breakglass-requests-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: request_id
+          AttributeType: S
+        - AttributeName: requester_email
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: request_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: requester-index
+          KeySchema:
+            - AttributeName: requester_email
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Approvals Table
+  ApprovalsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'breakglass-approvals-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: approval_id
+          AttributeType: S
+        - AttributeName: request_id
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: approval_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: request-index
+          KeySchema:
+            - AttributeName: request_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Sessions Table
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'breakglass-sessions-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      TimeToLiveSpecification:
+        Enabled: true
+        AttributeName: ttl
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: requester_email
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: created_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: requester-index
+          KeySchema:
+            - AttributeName: requester_email
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: status-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Audit Table
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'breakglass-audit-${Environment}'
+      BillingMode: PAY_PER_REQUEST
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: actor_email
+          AttributeType: S
+        - AttributeName: event_type
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: actor-index
+          KeySchema:
+            - AttributeName: actor_email
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: event-type-index
+          KeySchema:
+            - AttributeName: event_type
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      Tags:
+        - Key: Application
+          Value: BreakGlassGuardian
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  RequestsTableName:
+    Description: Name of the Requests table
+    Value: !Ref RequestsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-RequestsTable'
+
+  ApprovalsTableName:
+    Description: Name of the Approvals table
+    Value: !Ref ApprovalsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-ApprovalsTable'
+
+  SessionsTableName:
+    Description: Name of the Sessions table
+    Value: !Ref SessionsTable
+    Export:
+      Name: !Sub '${AWS::StackName}-SessionsTable'
+
+  AuditTableName:
+    Description: Name of the Audit table
+    Value: !Ref AuditTable
+    Export:
+      Name: !Sub '${AWS::StackName}-AuditTable'
