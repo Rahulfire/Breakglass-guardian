@@ -1,5 +1,7 @@
 # BreakGlass Guardian
 
+![alt text](breakglass-gaurdian.png)
+
 BreakGlass Guardian is an emergency AWS access-management dashboard and API.
 It combines deterministic security validation, human approval, temporary AWS
 credentials, DynamoDB persistence, and audit reporting.
