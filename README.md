@@ -1,11 +1,11 @@
 # BreakGlass Guardian
 
-![alt text](breakglass-gaurdian.png)
-
 Article for Agents, your rules: Bedrock Managed Agents build:
 https://builder.aws.com/project/3MMhqkIgJpa7rQP3SHJXlrel3x3/breakglass-guardian-building-an-ai-agent-that-knows-when-to-say-no
 
 Demo Video: https://www.youtube.com/watch?v=pXU9REXJ8js
+
+![alt text](breakglass-gaurdian.png)
 
 BreakGlass Guardian is an emergency AWS access-management dashboard and API.
 It combines deterministic security validation, human approval, temporary AWS
